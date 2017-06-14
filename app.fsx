@@ -78,7 +78,7 @@ let corsConfig =
         allowedMethods = InclusiveOption.Some [ HttpMethod.GET ] }
 let app = 
   choose
-    [ 
+    [ OPTIONS >=> cors corsConfig >=> NO_CONTENT
       GET 
       >=> path "/" 
       >=> cors corsConfig
