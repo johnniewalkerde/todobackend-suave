@@ -2,3 +2,5 @@ source https://nuget.org/api/v2
 nuget Suave
 nuget FAKE
 nuget FSharp.Compiler.Service
+nuget FSharp.Data
+nuget Newtonsoft.Json

@@ -9,19 +9,24 @@ Paket.Dependencies.Install (System.IO.File.ReadAllText "paket.dependencies")
 
 #I "packages/Suave/lib/net40"
 #r "packages/Suave/lib/net40/Suave.dll"
+#r "packages/FSharp.Data/lib/net40/FSharp.Data.dll"
+#r "packages/Newtonsoft.Json/lib/net45/Newtonsoft.Json.dll"
 
 open System
 open System.IO
-open Suave                 // always open suave
+open FSharp.Data
+open Suave
 open Suave.Operators
 open Suave.Http
 open Suave.Filters
 open Suave.Writers
-open Suave.Successful // for OK-result
-open Suave.Web             // for config
+open Suave.Successful
+open Suave.Web
 open Suave.CORS
 open Suave.Json
 open System.Net
+open Newtonsoft.Json
+open Microsoft.FSharp.Collections
 
 printfn "initializing script..."
 
@@ -42,61 +47,44 @@ let config =
                      | None -> HttpBinding.createSimple HTTP ip127 8080
                      | Some p -> HttpBinding.createSimple HTTP ipZero p) ] }
 
-printfn "starting web server..."
-
-let jsonText n = 
-    """
-{"menu": {
-  "id": "file",
-  "value": "File",
-  "popup": {
-    "result": [
-""" + String.concat "\n"
-      [ for i in 1 .. n -> sprintf """{"value": "%d"},""" i ] + """
-    ]
-  }
-}}""" 
-
 let xmlMime = Writers.setMimeType "application/xml"
 let jsonMime = Writers.setMimeType "application/json"
-let plainTextMime = Writers.setMimeType "text/plain"
-
-let setCORSHeaders =
-    setHeader  "Access-Control-Allow-Origin" "*"
-    >=> setHeader "Access-Control-Allow-Headers" "content-type"
-    >=> setHeader "Access-Control-Allow-Methods" "POST, GET, OPTIONS, DELETE, PATCH"
-let allowCors : WebPart =
-    choose [
-        OPTIONS >=> 
-            fun context -> 
-                context 
-                |> (setCORSHeaders >=> OK "CORS approved")
-    ]
 
 let corsConfig = 
     { defaultCORSConfig with 
         allowedUris = InclusiveOption.All
         exposeHeaders = true
-        allowedMethods = InclusiveOption.Some [ HttpMethod.GET ] }
+        allowedMethods = InclusiveOption.Some [ HttpMethod.GET; HttpMethod.DELETE ] }
+
+[<CLIMutable>]
+type TodoItem = { title : string; completed : bool; url : string }
+type TodoItemProvider = JsonProvider<""" { "title":"todo", "completed":false } """>
+
+let todoItems = ResizeArray<TodoItem>()
+todoItems.Add { title = "he"; completed = false; url = "" }
 
 let handlePostRequest request =
-    System.Text.Encoding.UTF8.GetString(request.rawForm) |> OK
+    let postedItem = System.Text.Encoding.UTF8.GetString(request.rawForm) |> JsonConvert.DeserializeObject<TodoItem>
+    let item = { postedItem with completed = false }
+    todoItems.Add item
+    OK (JsonConvert.SerializeObject item)
+
 let app = 
   choose
-    [ OPTIONS >=> cors corsConfig >=> NO_CONTENT
+    [ 
+      OPTIONS 
+        >=> cors corsConfig >=> NO_CONTENT
       GET 
-      >=> path "/" 
-      >=> cors corsConfig
-      >=> OK ("Hello GET <br/>" 
-        + corsConfig.allowedUris.ToString() 
-        + "<br/>Expose Headers:" + corsConfig.exposeHeaders.ToString()
-        + "<br/>Methods:" + corsConfig.allowedMethods.ToString()
-        )
-      POST >=> cors corsConfig >=> request handlePostRequest
+        >=> cors corsConfig >=> OK (JsonConvert.SerializeObject todoItems)
+      POST 
+        >=> cors corsConfig >=> request handlePostRequest
+      DELETE 
+        >=> cors corsConfig >=> OK ""
     ]
     
 #if DO_NOT_START_SERVER
 #else
+printfn "starting web server..."
 startWebServer config app
 printfn "exiting server..."
 #endif
