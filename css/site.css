@@ -1,0 +1,8 @@
+.center-cropped {
+  object-fit: none; /* Do not scale the image */
+  object-position: center; /* Center the image within the element */
+  height: 100px;
+  width: 100px;
+}
+
+div.is-child.notification.is-info:hover { background-color: #23d160; }
