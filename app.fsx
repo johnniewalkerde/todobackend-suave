@@ -58,6 +58,7 @@ let jsonText n =
 
 let xmlMime = Writers.setMimeType "application/xml"
 let jsonMime = Writers.setMimeType "application/json"
+let plainTextMime = Writers.setMimeType "text/plain"
 
 let setCORSHeaders =
     setHeader  "Access-Control-Allow-Origin" "*"
@@ -78,10 +79,11 @@ let corsConfig =
         allowedMethods = InclusiveOption.Some [ HttpMethod.GET ] }
 let app = 
   choose
-    [ OPTIONS >=> cors corsConfig >=> NO_CONTENT
+    [ OPTIONS >=> cors corsConfig >=> plainTextMime >=> NO_CONTENT
       GET 
       >=> path "/" 
       >=> cors corsConfig
+      >=> plainTextMime
       >=> OK ("Hello GET <br/>" 
         + corsConfig.allowedUris.ToString() 
         + "<br/>Expose Headers:" + corsConfig.exposeHeaders.ToString()
