@@ -89,6 +89,7 @@ let app =
         + "<br/>Expose Headers:" + corsConfig.exposeHeaders.ToString()
         + "<br/>Methods:" + corsConfig.allowedMethods.ToString()
         )
+      POST >=> cors corsConfig >=> plainTextMime >=> OK "POST OK"
     ]
     
 #if DO_NOT_START_SERVER
