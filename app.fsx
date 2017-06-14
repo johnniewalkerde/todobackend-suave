@@ -79,17 +79,16 @@ let corsConfig =
         allowedMethods = InclusiveOption.Some [ HttpMethod.GET ] }
 let app = 
   choose
-    [ OPTIONS >=> cors corsConfig >=> plainTextMime >=> NO_CONTENT
+    [ OPTIONS >=> cors corsConfig >=> NO_CONTENT
       GET 
       >=> path "/" 
       >=> cors corsConfig
-      >=> plainTextMime
       >=> OK ("Hello GET <br/>" 
         + corsConfig.allowedUris.ToString() 
         + "<br/>Expose Headers:" + corsConfig.exposeHeaders.ToString()
         + "<br/>Methods:" + corsConfig.allowedMethods.ToString()
         )
-      POST >=> cors corsConfig >=> plainTextMime >=> OK "POST OK"
+      POST >=> cors corsConfig >=> jsonMime >=> OK "{title:\"a todo\"}"
     ]
     
 #if DO_NOT_START_SERVER
