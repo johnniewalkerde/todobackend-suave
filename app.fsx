@@ -20,6 +20,7 @@ open Suave.Writers
 open Suave.Successful // for OK-result
 open Suave.Web             // for config
 open Suave.CORS
+open Suave.Json
 open System.Net
 
 printfn "initializing script..."
@@ -77,6 +78,9 @@ let corsConfig =
         allowedUris = InclusiveOption.All
         exposeHeaders = true
         allowedMethods = InclusiveOption.Some [ HttpMethod.GET ] }
+
+let handlePostRequest request =
+    System.Text.Encoding.UTF8.GetString(request.rawForm) |> OK
 let app = 
   choose
     [ OPTIONS >=> cors corsConfig >=> NO_CONTENT
@@ -88,7 +92,7 @@ let app =
         + "<br/>Expose Headers:" + corsConfig.exposeHeaders.ToString()
         + "<br/>Methods:" + corsConfig.allowedMethods.ToString()
         )
-      POST >=> cors corsConfig >=> jsonMime >=> OK "{\"title\":\"a todo\"}"
+      POST >=> cors corsConfig >=> request handlePostRequest
     ]
     
 #if DO_NOT_START_SERVER
