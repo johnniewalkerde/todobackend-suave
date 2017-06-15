@@ -21,6 +21,7 @@ open Suave.Http
 open Suave.Filters
 open Suave.Writers
 open Suave.Successful
+open Suave.RequestErrors
 open Suave.Web
 open Suave.CORS
 open Suave.Json
@@ -53,24 +54,36 @@ let corsConfig =
     { defaultCORSConfig with 
         allowedUris = InclusiveOption.All
         exposeHeaders = true
-        allowedMethods = InclusiveOption.Some [ HttpMethod.GET; HttpMethod.DELETE ] }
+        allowedMethods = InclusiveOption.Some [ HttpMethod.GET; HttpMethod.DELETE; HttpMethod.PATCH ] }
 
 [<CLIMutable>]
-type TodoItem = { title : string; completed : bool; url : string }
-type TodoItemProvider = JsonProvider<""" { "title":"title", "completed":false } """>
+type TodoItem = { title : string; completed : bool; url : string; order : int }
+type TodoItemProvider = JsonProvider<""" { "title":"title", "completed":false, "order":1 } """>
 
 let mutable todoItems = []
 
 let handlePostRequest request =
   let postedItem = System.Text.Encoding.UTF8.GetString(request.rawForm) |> JsonConvert.DeserializeObject<TodoItem>
-  let item = { postedItem with completed = false; url = Guid.NewGuid().ToString() }
-  printf "Adding item \"%s\" ... " item.title
+  let item = { postedItem with completed = false; url = (request.url.AbsoluteUri + Guid.NewGuid().ToString()) }
   todoItems <- item :: todoItems
-  printfn "added"
   OK (JsonConvert.SerializeObject item)
 let getTodoItems() =
-  printfn "Get item list (current size %d)" (todoItems.Length)
   JsonConvert.SerializeObject todoItems
+
+let getTodoItem url =
+  match todoItems |> List.tryFind (fun item -> item.url = url) with
+  | Some item -> OK (JsonConvert.SerializeObject item)
+  | _ -> NOT_FOUND (sprintf "Item with URL %s not found." url)
+
+let updateTodoItem request =
+  let patchItem = System.Text.Encoding.UTF8.GetString(request.rawForm) |> JsonConvert.DeserializeObject<TodoItem>
+  let patchTitle item =
+    match item.url with
+    | x when x = request.url.AbsoluteUri -> 
+      { item with title = patchItem.title; completed = patchItem.completed; order = patchItem.order }
+    | _ -> item
+  todoItems <- (todoItems |> List.map patchTitle)
+  getTodoItem request.url.AbsoluteUri
 
 let app = 
   cors corsConfig >=>
@@ -78,12 +91,17 @@ let app =
     [ 
       OPTIONS 
         >=> NO_CONTENT
-      GET 
-        >=> request (fun _ -> OK (getTodoItems()))
+      GET
+        >=> choose [ 
+            path "/" >=> request (fun _ -> OK (getTodoItems()))
+            pathScan "/%s" (fun _ -> request (fun r -> getTodoItem r.url.AbsoluteUri))
+          ]
       POST 
         >=> request handlePostRequest
       DELETE 
         >=> request (fun _ -> todoItems <- []; OK "")
+      PATCH
+        >=> pathScan "/%s" (fun _ -> request (fun r -> updateTodoItem r))
     ]
     
 #if DO_NOT_START_SERVER
