@@ -69,7 +69,7 @@ let reloadAppServer (changedFiles: string seq) =
 
 Target "run" (fun _ ->
   let app ctx = currentApp.Value ctx
-  let port = findPort 8083
+  let port = findPort 8080
   let _, server = startWebServerAsync (getLocalServerConfig port) app
 
   // Start Suave to host it on localhost

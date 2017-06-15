@@ -30,14 +30,16 @@ open Newtonsoft.Json
 
 printfn "initializing script..."
 
+let getPort =
+  let p = box (System.Environment.GetEnvironmentVariable("PORT")) 
+  if isNull p then
+    None
+  else
+    let port = unbox p
+    Some(port |> string |> int)
+
 let config = 
-    let port = 
-      let p = box (System.Environment.GetEnvironmentVariable("PORT")) 
-      if isNull p then
-        None
-      else
-        let port = unbox p
-        Some(port |> string |> int)
+    let port = getPort
     let ip127  = "127.0.0.1"
     let ipZero = "0.0.0.0"
 
@@ -63,8 +65,12 @@ type TodoItemProvider = JsonProvider<""" { "title":"title", "completed":false, "
 let mutable todoItems = []
 
 let buildUrl (request:HttpRequest) =
+  let port =
+    match getPort with
+    | Some p -> 80
+    | None -> 8080
   request.url.Scheme + "://" +
-  request.host + ":" + request.url.Port.ToString() + "/" +
+  request.host + ":" + port.ToString() + "/" +
   Guid.NewGuid().ToString()
 
 let handlePostRequest request =
