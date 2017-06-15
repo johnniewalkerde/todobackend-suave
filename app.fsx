@@ -61,13 +61,17 @@ type TodoItem = { title : string; completed : bool; url : string }
 type TodoItemProvider = JsonProvider<""" { "title":"todo", "completed":false } """>
 
 let todoItems = ResizeArray<TodoItem>()
-todoItems.Add { title = "he"; completed = false; url = "" }
 
 let handlePostRequest request =
-    let postedItem = System.Text.Encoding.UTF8.GetString(request.rawForm) |> JsonConvert.DeserializeObject<TodoItem>
-    let item = { postedItem with completed = false }
-    todoItems.Add item
-    OK (JsonConvert.SerializeObject item)
+  let postedItem = System.Text.Encoding.UTF8.GetString(request.rawForm) |> JsonConvert.DeserializeObject<TodoItem>
+  let item = { postedItem with completed = false; url = "" }
+  printf "Adding item \"%s\" ... " item.title
+  todoItems.Add(item)
+  printfn "added"
+  OK (JsonConvert.SerializeObject item)
+let getTodoItems() =
+  printfn "Get item list (current size %d)" (todoItems.Capacity)
+  JsonConvert.SerializeObject todoItems
 
 let app = 
   choose
@@ -75,11 +79,11 @@ let app =
       OPTIONS 
         >=> cors corsConfig >=> NO_CONTENT
       GET 
-        >=> cors corsConfig >=> OK (JsonConvert.SerializeObject todoItems)
+        >=> cors corsConfig >=> request (fun _ -> OK (getTodoItems()))
       POST 
         >=> cors corsConfig >=> request handlePostRequest
       DELETE 
-        >=> cors corsConfig >=> OK ""
+        >=> cors corsConfig >=> request (fun _ -> todoItems.Clear(); OK "")
     ]
     
 #if DO_NOT_START_SERVER
