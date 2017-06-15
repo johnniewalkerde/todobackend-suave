@@ -15,7 +15,6 @@ Paket.Dependencies.Install (System.IO.File.ReadAllText "paket.dependencies")
 open System
 open System.IO
 open FSharp.Data
-open FSharp.Core
 open Suave
 open Suave.Operators
 open Suave.Http
@@ -27,7 +26,6 @@ open Suave.CORS
 open Suave.Json
 open System.Net
 open Newtonsoft.Json
-open Microsoft.FSharp.Collections
 
 printfn "initializing script..."
 
@@ -59,32 +57,33 @@ let corsConfig =
 
 [<CLIMutable>]
 type TodoItem = { title : string; completed : bool; url : string }
-type TodoItemProvider = JsonProvider<""" { "title":"todo", "completed":false } """>
+type TodoItemProvider = JsonProvider<""" { "title":"title", "completed":false } """>
 
-let todoItems = ResizeArray<TodoItem>()
+let mutable todoItems = []
 
 let handlePostRequest request =
   let postedItem = System.Text.Encoding.UTF8.GetString(request.rawForm) |> JsonConvert.DeserializeObject<TodoItem>
-  let item = { postedItem with completed = false; url = "" }
+  let item = { postedItem with completed = false; url = Guid.NewGuid().ToString() }
   printf "Adding item \"%s\" ... " item.title
-  todoItems.Add(item)
+  todoItems <- item :: todoItems
   printfn "added"
   OK (JsonConvert.SerializeObject item)
 let getTodoItems() =
-  printfn "Get item list (current size %d)" (todoItems.Capacity)
+  printfn "Get item list (current size %d)" (todoItems.Length)
   JsonConvert.SerializeObject todoItems
 
 let app = 
+  cors corsConfig >=>
   choose
     [ 
       OPTIONS 
-        >=> cors corsConfig >=> NO_CONTENT
+        >=> NO_CONTENT
       GET 
-        >=> cors corsConfig >=> request (fun _ -> OK (getTodoItems()))
+        >=> request (fun _ -> OK (getTodoItems()))
       POST 
-        >=> cors corsConfig >=> request handlePostRequest
+        >=> request handlePostRequest
       DELETE 
-        >=> cors corsConfig >=> request (fun _ -> todoItems.Clear(); OK "")
+        >=> request (fun _ -> todoItems <- []; OK "")
     ]
     
 #if DO_NOT_START_SERVER
