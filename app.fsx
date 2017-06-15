@@ -15,6 +15,7 @@ Paket.Dependencies.Install (System.IO.File.ReadAllText "paket.dependencies")
 open System
 open System.IO
 open FSharp.Data
+open FSharp.Core
 open Suave
 open Suave.Operators
 open Suave.Http
