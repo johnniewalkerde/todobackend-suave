@@ -62,28 +62,36 @@ type TodoItemProvider = JsonProvider<""" { "title":"title", "completed":false, "
 
 let mutable todoItems = []
 
+let buildUrl (request:HttpRequest) =
+  request.url.Scheme + "://" +
+  request.host + ":" + request.url.Port.ToString() + "/" +
+  Guid.NewGuid().ToString()
+
 let handlePostRequest request =
   let postedItem = System.Text.Encoding.UTF8.GetString(request.rawForm) |> JsonConvert.DeserializeObject<TodoItem>
-  let item = { postedItem with completed = false; url = (request.url.AbsoluteUri + Guid.NewGuid().ToString()) }
+  let item = { postedItem with 
+    completed = false; 
+    url = buildUrl request
+    }
   todoItems <- item :: todoItems
   OK (JsonConvert.SerializeObject item)
 let getTodoItems() =
   JsonConvert.SerializeObject todoItems
 
-let getTodoItem url =
-  match todoItems |> List.tryFind (fun item -> item.url = url) with
+let getTodoItem guid =
+  match todoItems |> List.tryFind (fun item -> item.url.EndsWith(guid)) with
   | Some item -> OK (JsonConvert.SerializeObject item)
-  | _ -> NOT_FOUND (sprintf "Item with URL %s not found." url)
+  | _ -> NOT_FOUND (sprintf "Item with guid %s not found." guid)
 
-let updateTodoItem request =
+let updateTodoItem request guid =
   let patchItem = System.Text.Encoding.UTF8.GetString(request.rawForm) |> JsonConvert.DeserializeObject<TodoItem>
   let patchTitle item =
     match item.url with
-    | x when x = request.url.AbsoluteUri -> 
+    | x when x.EndsWith(guid) -> 
       { item with title = patchItem.title; completed = patchItem.completed; order = patchItem.order }
     | _ -> item
   todoItems <- (todoItems |> List.map patchTitle)
-  getTodoItem request.url.AbsoluteUri
+  getTodoItem guid
 
 let app = 
   cors corsConfig >=>
@@ -94,14 +102,14 @@ let app =
       GET
         >=> choose [ 
             path "/" >=> request (fun _ -> OK (getTodoItems()))
-            pathScan "/%s" (fun _ -> request (fun r -> getTodoItem r.url.AbsoluteUri))
+            pathScan "/%s" (fun guid -> request (fun r -> getTodoItem guid))
           ]
       POST 
         >=> request handlePostRequest
       DELETE 
         >=> request (fun _ -> todoItems <- []; OK "")
       PATCH
-        >=> pathScan "/%s" (fun _ -> request (fun r -> updateTodoItem r))
+        >=> pathScan "/%s" (fun guid -> request (fun r -> updateTodoItem r guid))
     ]
     
 #if DO_NOT_START_SERVER
