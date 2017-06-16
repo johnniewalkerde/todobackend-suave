@@ -25,6 +25,7 @@ open Suave.RequestErrors
 open Suave.Web
 open Suave.CORS
 open Suave.Json
+open Suave.Logging
 open System.Net
 open Microsoft.FSharp.Reflection
 open Newtonsoft.Json
@@ -70,7 +71,7 @@ let config =
     let ipZero = "0.0.0.0"
 
     { defaultConfig with 
-        logger = Logging.Targets.create Logging.Verbose [||]
+        logger = Logging.Targets.create Logging.Info [| "suave" |]
         bindings=[ (match port with 
                      | None -> HttpBinding.createSimple HTTP ip127 8080
                      | Some p -> HttpBinding.createSimple HTTP ipZero p) ] }
@@ -142,6 +143,18 @@ let updateTodoItem request guid =
   todoItems <- (todoItems |> List.map patchTitle)
   getTodoItem guid
 
+let removeTodoItem guid =
+  todoItems <- (todoItems |> List.filter (fun item -> item.url.Value.EndsWith guid |> not))
+  OK ""
+
+let logRequest request =
+  sprintf "%8s: %-60s %s" 
+    (request.request.method.ToString()) 
+    request.request.url.OriginalString 
+    (System.Text.Encoding.UTF8.GetString(request.request.rawForm))
+
+let logger = Logging.Targets.create Logging.Info [| "suave" |]
+
 let app = 
   cors corsConfig >=>
   choose
@@ -156,10 +169,14 @@ let app =
       POST 
         >=> request handlePostRequest
       DELETE 
-        >=> request (fun _ -> todoItems <- []; OK "")
+        >=> choose [
+            path "/" >=> request (fun _ -> todoItems <- []; OK "")
+            pathScan "/%s" (fun guid -> request (fun r -> removeTodoItem guid))
+        ]
       PATCH
         >=> pathScan "/%s" (fun guid -> request (fun r -> updateTodoItem r guid))
     ]
+  >=> logWithLevel Logging.Info logger logRequest
     
 #if DO_NOT_START_SERVER
 #else
