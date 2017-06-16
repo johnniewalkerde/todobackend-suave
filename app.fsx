@@ -26,9 +26,35 @@ open Suave.Web
 open Suave.CORS
 open Suave.Json
 open System.Net
+open Microsoft.FSharp.Reflection
 open Newtonsoft.Json
+open Newtonsoft.Json.Converters
 
 printfn "initializing script..."
+
+type OptionConverter() =
+    inherit JsonConverter()
+
+    override x.CanConvert(t) = 
+        t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<option<_>>
+
+    override x.WriteJson(writer, value, serializer) =
+        let value = 
+            if isNull value then null
+            else 
+                let _,fields = FSharpValue.GetUnionFields(value, value.GetType())
+                fields.[0]  
+        serializer.Serialize(writer, value)
+
+    override x.ReadJson(reader, t, existingValue, serializer) =        
+        let innerType = t.GetGenericArguments().[0]
+        let innerType = 
+            if innerType.IsValueType then (typedefof<Nullable<_>>).MakeGenericType([|innerType|])
+            else innerType        
+        let value = serializer.Deserialize(reader, innerType)
+        let cases = FSharpType.GetUnionCases(t)
+        if isNull value then FSharpValue.MakeUnion(cases.[0], [||])
+        else FSharpValue.MakeUnion(cases.[1], [|value|])
 
 let getPort =
   let p = box (System.Environment.GetEnvironmentVariable("PORT")) 
@@ -59,7 +85,7 @@ let corsConfig =
         allowedMethods = InclusiveOption.Some [ HttpMethod.GET; HttpMethod.DELETE; HttpMethod.PATCH ] }
 
 [<CLIMutable>]
-type TodoItem = { title : string; completed : bool; url : string; order : int }
+type TodoItem = { title : string option; completed : bool option; url : string option; order : int option }
 type TodoItemProvider = JsonProvider<""" { "title":"title", "completed":false, "order":1 } """>
 
 let mutable todoItems = []
@@ -74,27 +100,44 @@ let buildUrl (request:HttpRequest) =
   Guid.NewGuid().ToString()
 
 let handlePostRequest request =
-  let postedItem = System.Text.Encoding.UTF8.GetString(request.rawForm) |> JsonConvert.DeserializeObject<TodoItem>
-  let item = { postedItem with 
-    completed = false; 
-    url = buildUrl request
+  let postedItem = JsonConvert.DeserializeObject<TodoItem>(System.Text.Encoding.UTF8.GetString(request.rawForm), OptionConverter())
+  let item = 
+    { postedItem with 
+        completed = Some false; 
+        url = Some (buildUrl request)
     }
   todoItems <- item :: todoItems
-  OK (JsonConvert.SerializeObject item)
+  OK (JsonConvert.SerializeObject(item, OptionConverter()))
 let getTodoItems() =
-  JsonConvert.SerializeObject todoItems
+  JsonConvert.SerializeObject(todoItems, OptionConverter())
 
 let getTodoItem guid =
-  match todoItems |> List.tryFind (fun item -> item.url.EndsWith(guid)) with
-  | Some item -> OK (JsonConvert.SerializeObject item)
+  match todoItems |> List.tryFind (fun item -> item.url.Value.EndsWith(guid)) with
+  | Some item -> OK (JsonConvert.SerializeObject(item, OptionConverter()))
   | _ -> NOT_FOUND (sprintf "Item with guid %s not found." guid)
 
+let patchItem item withItem =
+  { 
+    item with 
+      title = 
+        match withItem.title with
+        | Some t -> Some t
+        | None -> item.title
+      completed = 
+        match withItem.completed with
+        | Some c -> Some c
+        | None -> item.completed
+      order = 
+        match withItem.order with
+        | Some o -> Some o
+        | None -> item.order
+  }
+
 let updateTodoItem request guid =
-  let patchItem = System.Text.Encoding.UTF8.GetString(request.rawForm) |> JsonConvert.DeserializeObject<TodoItem>
+  let receivedItem = JsonConvert.DeserializeObject<TodoItem>(System.Text.Encoding.UTF8.GetString(request.rawForm), OptionConverter())
   let patchTitle item =
     match item.url with
-    | x when x.EndsWith(guid) -> 
-      { item with title = patchItem.title; completed = patchItem.completed; order = patchItem.order }
+    | x when x.Value.EndsWith(guid) -> patchItem item receivedItem
     | _ -> item
   todoItems <- (todoItems |> List.map patchTitle)
   getTodoItem guid
